@@ -1,35 +1,58 @@
+# Install gdown if not already installed
+!pip install gdown
+
+import gdown
+
+# Download the product data file from Google Drive
+product_file_id = '1KLZGUwL0g86QvY5o9Zmyml_Qo1aqgtK9'  # Replace with your actual file ID
+product_url = f'https://drive.google.com/uc?id={product_file_id}'
+product_output = 'products_export_1.csv'
+gdown.download(product_url, product_output, quiet=False)
+
+import pandas as pd
 import numpy as np
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_similarity
+import re
 
-# Updated sample data (replace with your actual data)
-products = [
-    {"title": "Running Shoes", "description": "High-quality running shoes for athletes", "tags": "running sports shoes"},
-    {"title": "Yoga Mat", "description": "Eco-friendly yoga mat with non-slip surface", "tags": "yoga fitness mat"},
-    {"title": "Cycling Helmet", "description": "Safety helmet for cycling enthusiasts", "tags": "cycling safety gear"},
-    {"title": "Hiking Backpack", "description": "Durable backpack for hiking adventures", "tags": "hiking outdoors gear"},
-    {"title": "Car Helmet", "description": "Durable helmet for your racing car", "tags": "racing car"},
-]
+# Load the data from CSV
+df = pd.read_csv('products_export_1.csv')
 
+# Select relevant columns for product information
+product_data = df[['Handle', 'Title', 'Body (HTML)', 'Tags']]
+
+# Function to clean text data
+def clean_text(text):
+    # Remove HTML tags using regex
+    clean = re.compile('<.*?>')
+    text = re.sub(clean, '', text)
+    # Remove punctuation and convert to lowercase
+    text = re.sub(r'[^\w\s]', '', text).lower()
+    return text
+
+# Clean 'Body (HTML)' column
+product_data['cleaned_body'] = product_data['Body (HTML)'].apply(clean_text)
+
+# Combine relevant text columns for TF-IDF vectorization
+product_data['combined_text'] = product_data['Title'] + ' ' + product_data['cleaned_body'] + ' ' + product_data['Tags'].fillna('')
+
+# TF-IDF vectorization
+vectorizer = TfidfVectorizer(stop_words='english')
+product_tfidf = vectorizer.fit_transform(product_data['combined_text'].values.astype('U'))
+
+# Example user profiles (replace with actual user data)
 users = [
     {"country": "USA", "activities": "running hiking", "attended_events": ["Devcon"]},
     {"country": "Canada", "activities": "cycling yoga", "attended_events": ["HealthNY", "Classic Cars 2024"]},
 ]
 
-# Extract features from products and users, including attended events
-product_descriptions = [prod['description'] for prod in products]
+# Preprocess user profiles
 user_profiles = [
     f"{user['country']} {user['activities']} {' '.join(user['attended_events'])}"
     for user in users
 ]
 
-# Custom tokenizer that considers events as single tokens
-def custom_tokenizer(text):
-    return text.split()
-
-# TF-IDF vectorization with custom tokenizer
-vectorizer = TfidfVectorizer(stop_words='english', tokenizer=custom_tokenizer)
-product_tfidf = vectorizer.fit_transform(product_descriptions)
+# TF-IDF transformation for user profiles
 user_tfidf = vectorizer.transform(user_profiles)
 
 # Compute cosine similarity between user profile and each product
@@ -42,21 +65,7 @@ for i, user in enumerate(users):
     # Sort product indices by similarity score (descending order)
     sorted_indices = np.argsort(user_similarities)[::-1]
     for idx in sorted_indices:
-        product = products[idx]
+        product = product_data.iloc[idx]
         similarity_score = user_similarities[idx]
-        print(f"- {product['title']} (Similarity Score: {similarity_score:.2f})")
+        print(f"- {product['Title']} (Similarity Score: {similarity_score:.2f})")
     print()
-
-# Recommendations for User 1:
-# - Hiking Backpack (Similarity Score: 0.37)
-# - Running Shoes (Similarity Score: 0.35)
-# - Car Helmet (Similarity Score: 0.00)
-# - Cycling Helmet (Similarity Score: 0.00)
-# - Yoga Mat (Similarity Score: 0.00)
-
-# Recommendations for User 2:
-# - Cycling Helmet (Similarity Score: 0.37)
-# - Yoga Mat (Similarity Score: 0.32)
-# - Car Helmet (Similarity Score: 0.00)
-# - Hiking Backpack (Similarity Score: 0.00)
-# - Running Shoes (Similarity Score: 0.00)
