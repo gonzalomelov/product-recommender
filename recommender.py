@@ -4,9 +4,10 @@ from sklearn.metrics.pairwise import cosine_similarity
 
 # Sample data (replace with your actual data)
 products = [
-    {"title": "Product A", "description": "Description of Product A", "tags": "tag1 tag2"},
-    {"title": "Product B", "description": "Description of Product B", "tags": "tag2 tag3"},
-    {"title": "Product C", "description": "Description of Product C", "tags": "tag1 tag3"},
+    {"title": "Running Shoes", "description": "High-quality running shoes for athletes", "tags": "running sports shoes"},
+    {"title": "Yoga Mat", "description": "Eco-friendly yoga mat with non-slip surface", "tags": "yoga fitness mat"},
+    {"title": "Cycling Helmet", "description": "Safety helmet for cycling enthusiasts", "tags": "cycling safety gear"},
+    {"title": "Hiking Backpack", "description": "Durable backpack for hiking adventures", "tags": "hiking outdoors gear"},
 ]
 
 users = [
