@@ -23,8 +23,12 @@ user_profiles = [
     for user in users
 ]
 
-# TF-IDF vectorization
-vectorizer = TfidfVectorizer(stop_words='english')
+# Custom tokenizer that considers events as single tokens
+def custom_tokenizer(text):
+    return text.split()
+
+# TF-IDF vectorization with custom tokenizer
+vectorizer = TfidfVectorizer(stop_words='english', tokenizer=custom_tokenizer)
 product_tfidf = vectorizer.fit_transform(product_descriptions)
 user_tfidf = vectorizer.transform(user_profiles)
 
@@ -45,14 +49,14 @@ for i, user in enumerate(users):
 
 # Recommendations for User 1:
 # - Hiking Backpack (Similarity Score: 0.37)
-# - Running Shoes (Similarity Score: 0.32)
+# - Running Shoes (Similarity Score: 0.35)
 # - Car Helmet (Similarity Score: 0.00)
 # - Cycling Helmet (Similarity Score: 0.00)
 # - Yoga Mat (Similarity Score: 0.00)
 
 # Recommendations for User 2:
 # - Cycling Helmet (Similarity Score: 0.37)
-# - Yoga Mat (Similarity Score: 0.27)
+# - Yoga Mat (Similarity Score: 0.32)
 # - Car Helmet (Similarity Score: 0.00)
 # - Hiking Backpack (Similarity Score: 0.00)
 # - Running Shoes (Similarity Score: 0.00)
