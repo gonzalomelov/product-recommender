@@ -2,23 +2,24 @@ import numpy as np
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_similarity
 
-# Sample data (replace with your actual data)
+# Updated sample data (replace with your actual data)
 products = [
     {"title": "Running Shoes", "description": "High-quality running shoes for athletes", "tags": "running sports shoes"},
     {"title": "Yoga Mat", "description": "Eco-friendly yoga mat with non-slip surface", "tags": "yoga fitness mat"},
     {"title": "Cycling Helmet", "description": "Safety helmet for cycling enthusiasts", "tags": "cycling safety gear"},
     {"title": "Hiking Backpack", "description": "Durable backpack for hiking adventures", "tags": "hiking outdoors gear"},
+    {"title": "Car Helmet", "description": "Durable helmet for your racing car", "tags": "racing car"},
 ]
 
 users = [
-    {"country": "USA", "activities": "running hiking", "attended_event": "yes"},
-    {"country": "Canada", "activities": "cycling yoga", "attended_event": "no"},
+    {"country": "USA", "activities": "running hiking", "attended_events": ["Devcon"]},
+    {"country": "Canada", "activities": "cycling yoga", "attended_events": ["HealthNY", "Classic Cars 2024"]},
 ]
 
-# Extract features from products and users
+# Extract features from products and users, including attended events
 product_descriptions = [prod['description'] for prod in products]
 user_profiles = [
-    f"{user['country']} {user['activities']} {user['attended_event']}"
+    f"{user['country']} {user['activities']} {' '.join(user['attended_events'])}"
     for user in users
 ]
 
