@@ -22,16 +22,15 @@ product_output = 'products_export_1.csv'
 gdown.download(product_url, product_output, quiet=False)
 
 # Load the data from CSV
-df = pd.read_csv('products_export_1.csv')
+product_df = pd.read_csv('products_export_1.csv')
 
 # Display the first few rows to understand the structure
-df.head()
+product_df.head()
 
 # Step 2: Prepare data for analysis
 
-
 # Select relevant columns for product information
-product_data = df[['Handle', 'Title', 'Body (HTML)', 'Tags']]
+product_data = product_df[['Handle', 'Title', 'Body (HTML)', 'Tags']]
 
 # Function to clean text data
 def clean_text(text):
@@ -56,15 +55,23 @@ product_tfidf = vectorizer.fit_transform(product_data['combined_text'].values.as
 
 # Step 4: Define user profiles
 
-# Example user profiles (replace with actual user data)
+# Example user profiles with detailed activities (replace with actual user data)
 users = [
-    {"country": "USA", "activities": "running hiking", "attended_events": ["Devcon"]},
-    {"country": "Canada", "activities": "cycling yoga", "attended_events": ["HealthNY", "Classic Cars 2024"]},
+    {
+        "country": "USA",
+        "activities": ["running", "hiking"],
+        "attended_events": ["Devcon"]
+    },
+    {
+        "country": "Canada",
+        "activities": ["cycling", "yoga"],
+        "attended_events": ["HealthNY", "Classic Cars 2024"]
+    },
 ]
 
 # Preprocess user profiles
 user_profiles = [
-    f"{user['country']} {user['activities']} {' '.join(user['attended_events'])}"
+    f"{user['country']} {' '.join(user['activities'])} {' '.join(user['attended_events'])}"
     for user in users
 ]
 
@@ -84,7 +91,7 @@ for i, user in enumerate(users):
     user_similarities = similarities[i]
     # Sort product indices by similarity score (descending order)
     sorted_indices = np.argsort(user_similarities)[::-1]
-    for idx in sorted_indices:
+    for idx in sorted_indices[:5]:  # Adjust the number of recommendations as needed
         product = product_data.iloc[idx]
         similarity_score = user_similarities[idx]
         print(f"- {product['Title']} (Similarity Score: {similarity_score:.2f})")
