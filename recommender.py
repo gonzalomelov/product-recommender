@@ -1,5 +1,17 @@
+# Jupyter Notebook: Product Recommendation System
+
+# Importing necessary libraries
+
 # Install gdown if not already installed
 !pip install gdown
+
+import pandas as pd
+import numpy as np
+from sklearn.feature_extraction.text import TfidfVectorizer
+from sklearn.metrics.pairwise import cosine_similarity
+import re
+
+# Step 1: Load and inspect data
 
 import gdown
 
@@ -9,14 +21,14 @@ product_url = f'https://drive.google.com/uc?id={product_file_id}'
 product_output = 'products_export_1.csv'
 gdown.download(product_url, product_output, quiet=False)
 
-import pandas as pd
-import numpy as np
-from sklearn.feature_extraction.text import TfidfVectorizer
-from sklearn.metrics.pairwise import cosine_similarity
-import re
-
 # Load the data from CSV
 df = pd.read_csv('products_export_1.csv')
+
+# Display the first few rows to understand the structure
+df.head()
+
+# Step 2: Prepare data for analysis
+
 
 # Select relevant columns for product information
 product_data = df[['Handle', 'Title', 'Body (HTML)', 'Tags']]
@@ -36,9 +48,13 @@ product_data['cleaned_body'] = product_data['Body (HTML)'].apply(clean_text)
 # Combine relevant text columns for TF-IDF vectorization
 product_data['combined_text'] = product_data['Title'] + ' ' + product_data['cleaned_body'] + ' ' + product_data['Tags'].fillna('')
 
+# Step 3: Vectorize text data (TF-IDF)
+
 # TF-IDF vectorization
 vectorizer = TfidfVectorizer(stop_words='english')
 product_tfidf = vectorizer.fit_transform(product_data['combined_text'].values.astype('U'))
+
+# Step 4: Define user profiles
 
 # Example user profiles (replace with actual user data)
 users = [
@@ -55,8 +71,12 @@ user_profiles = [
 # TF-IDF transformation for user profiles
 user_tfidf = vectorizer.transform(user_profiles)
 
-# Compute cosine similarity between user profile and each product
+# Step 5: Calculate similarities
+
+# Compute cosine similarity between user profiles and product descriptions
 similarities = cosine_similarity(user_tfidf, product_tfidf)
+
+# Step 6: Recommend products
 
 # Recommend products based on highest similarity
 for i, user in enumerate(users):
