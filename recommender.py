@@ -42,3 +42,17 @@ for i, user in enumerate(users):
         similarity_score = user_similarities[idx]
         print(f"- {product['title']} (Similarity Score: {similarity_score:.2f})")
     print()
+
+# Recommendations for User 1:
+# - Hiking Backpack (Similarity Score: 0.37)
+# - Running Shoes (Similarity Score: 0.32)
+# - Car Helmet (Similarity Score: 0.00)
+# - Cycling Helmet (Similarity Score: 0.00)
+# - Yoga Mat (Similarity Score: 0.00)
+
+# Recommendations for User 2:
+# - Cycling Helmet (Similarity Score: 0.37)
+# - Yoga Mat (Similarity Score: 0.27)
+# - Car Helmet (Similarity Score: 0.00)
+# - Hiking Backpack (Similarity Score: 0.00)
+# - Running Shoes (Similarity Score: 0.00)
