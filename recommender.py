@@ -79,6 +79,11 @@ user_profiles = [
     for user in users
 ]
 
+# Verify user profiles
+print("User Profiles:")
+for profile in user_profiles:
+    print(profile)
+
 # TF-IDF transformation for user profiles
 user_tfidf = vectorizer.transform(user_profiles)
 
@@ -86,6 +91,10 @@ user_tfidf = vectorizer.transform(user_profiles)
 
 # Compute cosine similarity between user profiles and product descriptions
 similarities = cosine_similarity(user_tfidf, product_tfidf)
+
+# Debug: Check similarity scores
+print("Similarity Scores:")
+print(similarities)
 
 # Step 6: Recommend products
 
