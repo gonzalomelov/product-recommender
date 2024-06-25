@@ -34,6 +34,8 @@ product_data = product_df[['Handle', 'Title', 'Body (HTML)', 'Tags']]
 
 # Function to clean text data
 def clean_text(text):
+    # Replace "Coinbase One" with "coinbaseone" before further cleaning
+    text = text.replace("Coinbase One", "coinbaseone")
     # Remove HTML tags using regex
     clean = re.compile('<.*?>')
     text = re.sub(clean, '', text)
@@ -73,7 +75,7 @@ users = [
 
 # Preprocess user profiles
 user_profiles = [
-    f"{user['country']} {' '.join(user['activities'])} {' '.join(user['attended_events'])} {'coinbase_one' if user['coinbase_one'] else 'no_coinbase_one'}"
+    f"{user['country']} {' '.join(user['activities'])} {' '.join(user['attended_events'])} {'coinbaseone' if user['coinbase_one'] else 'nocoinbaseone'}"
     for user in users
 ]
 
