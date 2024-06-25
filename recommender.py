@@ -34,6 +34,8 @@ print(product_data.head())
 
 # Function to clean text data
 def clean_text(text):
+    if isinstance(text, float):
+        text = str(text)
     # Replace "Coinbase One" with "coinbaseone" before further cleaning
     text = text.replace("Coinbase One", "coinbaseone")
     # Remove HTML tags using regex
@@ -44,6 +46,7 @@ def clean_text(text):
     return text
 
 # Clean 'Body (HTML)' column
+product_data['Body (HTML)'] = product_data['Body (HTML)'].astype(str)
 product_data['cleaned_body'] = product_data['Body (HTML)'].apply(clean_text)
 
 # Combine relevant text columns for TF-IDF vectorization
