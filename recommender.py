@@ -25,7 +25,7 @@ gdown.download(product_url, product_output, quiet=False)
 product_df = pd.read_csv('products_export_1.csv')
 
 # Display the first few rows to understand the structure
-product_df.head()
+print(product_df.head())
 
 # Step 2: Prepare data for analysis
 
@@ -54,6 +54,9 @@ product_data['combined_text'] = product_data['Title'] + ' ' + product_data['clea
 # TF-IDF vectorization
 vectorizer = TfidfVectorizer(stop_words='english')
 product_tfidf = vectorizer.fit_transform(product_data['combined_text'].values.astype('U'))
+
+# Check the shape of the product TF-IDF matrix
+print("Shape of product TF-IDF matrix:", product_tfidf.shape)
 
 # Step 4: Define user profiles
 
@@ -86,6 +89,13 @@ for profile in user_profiles:
 
 # TF-IDF transformation for user profiles
 user_tfidf = vectorizer.transform(user_profiles)
+
+# Check the shape of the user TF-IDF matrix
+print("Shape of user TF-IDF matrix:", user_tfidf.shape)
+
+# Verify presence of "coinbaseone" in TF-IDF vocabulary
+print("TF-IDF Vocabulary:")
+print(vectorizer.vocabulary_)
 
 # Step 5: Calculate similarities
 
