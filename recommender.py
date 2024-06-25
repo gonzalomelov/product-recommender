@@ -24,13 +24,13 @@ gdown.download(product_url, product_output, quiet=False)
 # Load the data from CSV
 product_df = pd.read_csv('products_export_1.csv')
 
-# Display the first few rows to understand the structure
-print(product_df.head())
-
 # Step 2: Prepare data for analysis
 
 # Select relevant columns for product information
 product_data = product_df[['Handle', 'Title', 'Body (HTML)', 'Tags']]
+
+# Display the first few rows to understand the structure
+print(product_data.head())
 
 # Function to clean text data
 def clean_text(text):
