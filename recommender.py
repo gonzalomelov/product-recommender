@@ -161,14 +161,18 @@ print(similarities)
 
 # Step 6: Recommend products
 
+# Set a threshold for similarity
+similarity_threshold = 0.25  # Adjust this value as needed
+
 # Recommend products based on highest similarity
 for i, user in enumerate(users):
     print(f"Recommendations for User {i+1}:")
     user_similarities = similarities[i]
     # Sort product indices by similarity score (descending order)
     sorted_indices = np.argsort(user_similarities)[::-1]
-    for idx in sorted_indices[:5]:  # Adjust the number of recommendations as needed
-        product = product_data.iloc[idx]
+    for idx in sorted_indices:
         similarity_score = user_similarities[idx]
-        print(f"- {product['Title']} (Similarity Score: {similarity_score:.2f})")
+        if similarity_score >= similarity_threshold:  # Only recommend if above threshold
+            product = product_data.iloc[idx]
+            print(f"- {product['Title']} (Similarity Score: {similarity_score:.2f})")
     print()
