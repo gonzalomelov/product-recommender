@@ -52,6 +52,32 @@ product_data['cleaned_body'] = product_data['Body (HTML)'].apply(clean_text)
 # Combine relevant text columns for TF-IDF vectorization
 product_data['combined_text'] = product_data['Title'] + ' ' + product_data['cleaned_body'] + ' ' + product_data['Tags'].fillna('')
 
+# Convert combined_text to string type
+product_data['combined_text'] = product_data['combined_text'].astype(str)
+
+# Define keywords and phrases for activity categories
+activity_keywords = {
+    "running_100": ["for frequent runners", "for daily running", "ideal for daily runners", "run every day"],
+    "running_50": ["run multiple times a week", "run several times a week"],
+    "running_10": ["run weekly", "for weekly running"],
+    "running_5": ["occasional running", "run a few times a month"],
+    "running_1": ["run occasionally"]
+}
+
+# Function to infer activity category from text
+def infer_activity_category(text, keywords):
+    for category, phrases in keywords.items():
+        for phrase in phrases:
+            if phrase in text.lower():
+                return category
+    return "running_1"  # Default category if no match found
+
+# Infer activity categories for products
+product_data['activity_category'] = product_data['combined_text'].apply(lambda x: infer_activity_category(x, activity_keywords))
+
+# Update combined text with inferred activity category
+product_data['combined_text'] = product_data['combined_text'] + ' ' + product_data['activity_category']
+
 # Step 3: Vectorize text data (TF-IDF)
 
 # TF-IDF vectorization
@@ -67,21 +93,45 @@ print("Shape of product TF-IDF matrix:", product_tfidf.shape)
 users = [
     {
         "country": "USA",
-        "activities": ["running", "hiking"],
+        "activities": {
+            "running": 120,  # Number of running sessions
+            "hiking": 15
+        },
         "attended_events": ["Devcon"],
         "coinbase_one": True
     },
     {
         "country": "Canada",
-        "activities": ["cycling", "yoga"],
+        "activities": {
+            "cycling": 30,
+            "yoga": 20
+        },
         "attended_events": ["HealthNY", "Classic Cars 2024"],
         "coinbase_one": False
     },
 ]
 
+# Function to categorize running sessions
+def categorize_sessions(activity, sessions):
+    if activity == "running":
+        if sessions > 100:
+            return "running_100"
+        elif sessions > 50:
+            return "running_50"
+        elif sessions > 10:
+            return "running_10"
+        elif sessions > 5:
+            return "running_5"
+        elif sessions > 0:
+            return "running_1"
+    return activity  # Keep original activity for non-running activities
+
 # Preprocess user profiles
 user_profiles = [
-    f"{user['country']} {' '.join(user['activities'])} {' '.join(user['attended_events'])} {'coinbaseone' if user['coinbase_one'] else 'nocoinbaseone'}"
+    f"{user['country']} " +
+    ' '.join([categorize_sessions(activity, sessions) for activity, sessions in user['activities'].items()]) + ' ' +
+    ' '.join(user['attended_events']) + ' ' +
+    ('coinbaseone' if user['coinbase_one'] else 'nocoinbaseone')
     for user in users
 ]
 
