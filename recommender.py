@@ -55,23 +55,25 @@ product_tfidf = vectorizer.fit_transform(product_data['combined_text'].values.as
 
 # Step 4: Define user profiles
 
-# Example user profiles with detailed activities (replace with actual user data)
+# Example user profiles (replace with actual user data)
 users = [
     {
         "country": "USA",
         "activities": ["running", "hiking"],
-        "attended_events": ["Devcon"]
+        "attended_events": ["Devcon"],
+        "coinbase_one": True
     },
     {
         "country": "Canada",
         "activities": ["cycling", "yoga"],
-        "attended_events": ["HealthNY", "Classic Cars 2024"]
+        "attended_events": ["HealthNY", "Classic Cars 2024"],
+        "coinbase_one": False
     },
 ]
 
 # Preprocess user profiles
 user_profiles = [
-    f"{user['country']} {' '.join(user['activities'])} {' '.join(user['attended_events'])}"
+    f"{user['country']} {' '.join(user['activities'])} {' '.join(user['attended_events'])} {'coinbase_one' if user['coinbase_one'] else 'no_coinbase_one'}"
     for user in users
 ]
 
