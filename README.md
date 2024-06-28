@@ -1,3 +1,4 @@
+
 # Product Recommender
 
 ## Overview
@@ -26,6 +27,7 @@ Product Recommender is a Python-based recommendation system that suggests produc
 - pandas
 - numpy
 - scikit-learn
+- psycopg2-binary
 - re
 
 ## Installation
@@ -42,7 +44,14 @@ git clone https://github.com/gonzalomelov/product-recommender.git
 cd product-recommender
 ```
 
-3. Install the required Python packages:
+3. Create and activate a virtual environment:
+
+```bash
+python -m venv venv
+source venv/bin/activate  # On Windows, use `venv\Scripts\activate`
+```
+
+4. Install the required Python packages:
 
 ```bash
 pip install -r requirements.txt

@@ -1,21 +1,119 @@
-# Jupyter Notebook: Product Recommendation System
-
-# Importing necessary libraries
-
-# Install gdown if not already installed
-!pip install gdown
-
 import pandas as pd
 import numpy as np
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_similarity
 import re
+import json
+import psycopg2
+import subprocess
+import sys
+from country_codes import country_code_to_name  # Import the dictionary
 
-# Step 1: Load and inspect data
+# Function to check if running in a Jupyter notebook
+def is_notebook():
+    try:
+        shell = get_ipython().__class__.__name__
+        if shell == 'ZMQInteractiveShell':
+            return True  # Jupyter notebook or qtconsole
+        elif shell == 'TerminalInteractiveShell':
+            return False  # Terminal running IPython
+        else:
+            return False  # Other type (likely not a notebook)
+    except NameError:
+        return False  # Definitely not a notebook
 
-import gdown
+# Install packages if running in a notebook
+if is_notebook():
+    subprocess.check_call([sys.executable, "-m", "pip", "install", "gdown"])
+    subprocess.check_call([sys.executable, "-m", "pip", "install", "psycopg2-binary"])
+
+# Database connection details
+db_params = {
+    'dbname': 'eas-index',
+    'user': 'postgres',
+    'password': 'postgresPassword',
+    'host': '127.0.0.1',
+    'port': '5432'
+}
+
+# Connect to the PostgreSQL database
+conn = psycopg2.connect(**db_params)
+cur = conn.cursor()
+
+# Function to get all wallet attestations from the database
+def get_all_wallet_attestations():
+    query = """
+    SELECT "recipient", "schemaId", COUNT(*) as count, MAX("decodedDataJson") as decodedDataJson
+    FROM "Attestation"
+    WHERE "schemaId" IN (
+        '0x1801901fabd0e6189356b4fb52bb0ab855276d84f7ec140839fbd1f6801ca065',
+        '0x0f5b217904f3c65ad40b7af3db62716daddf53bb5db04b1a3ddb730fda0a474b',
+        '0xf8b05c79f090979bf4a80270aba232dff11a10d9ca55c4f88de95317970f0de9',
+        '0x254bd1b63e0591fefa66818ca054c78627306f253f86be6023725a67ee6bf9f4'
+    )
+    GROUP BY "recipient", "schemaId";
+    """
+    cur.execute(query)
+    return cur.fetchall()
+
+def extract_country_from_json(decoded_data_json):
+    try:
+        data = json.loads(decoded_data_json)
+        for item in data:
+            if item['name'] == 'verifiedCountry':
+                country_code = item['value']['value'].upper()
+                country_name = country_code_to_name.get(country_code, country_code)
+                return country_code, country_name
+    except (json.JSONDecodeError, KeyError, TypeError):
+        pass
+    return "", ""
+
+# Function to create user profiles based on attestations
+def create_user_profiles():
+    attestations = get_all_wallet_attestations()
+    profiles = {}
+
+    for recipient, schema_id, count, decoded_data_json in attestations:
+        if recipient not in profiles:
+            profiles[recipient] = {
+                "wallet": recipient,
+                "country_code": "",
+                "country": "",
+                "activities": {
+                    "running": 0
+                },
+                "attended_events": [],
+                "coinbase": False,
+                "coinbase_one": False
+            }
+        
+        profile = profiles[recipient]
+        if schema_id == '0x1801901fabd0e6189356b4fb52bb0ab855276d84f7ec140839fbd1f6801ca065':
+            country_code, country_name = extract_country_from_json(decoded_data_json)
+            profile["country_code"] = country_code
+            profile["country"] = country_name
+        elif schema_id == '0x0f5b217904f3c65ad40b7af3db62716daddf53bb5db04b1a3ddb730fda0a474b':
+            profile["activities"]["running"] += count
+        elif schema_id == '0xf8b05c79f090979bf4a80270aba232dff11a10d9ca55c4f88de95317970f0de9':
+            profile["coinbase"] = True
+        elif schema_id == '0x254bd1b63e0591fefa66818ca054c78627306f253f86be6023725a67ee6bf9f4':
+            profile["coinbase_one"] = True
+    
+    return list(profiles.values())
+
+# Create user profiles
+users = create_user_profiles()
+
+print("User Profiles:")
+for user in users:
+    print(user)
+
+# Clean up
+cur.close()
+conn.close()
 
 # Download the product data file from Google Drive
+import gdown
 product_file_id = '1KLZGUwL0g86QvY5o9Zmyml_Qo1aqgtK9'  # Replace with your actual file ID
 product_url = f'https://drive.google.com/uc?id={product_file_id}'
 product_output = 'products_export_1.csv'
@@ -87,30 +185,6 @@ product_tfidf = vectorizer.fit_transform(product_data['combined_text'].values.as
 # Check the shape of the product TF-IDF matrix
 print("Shape of product TF-IDF matrix:", product_tfidf.shape)
 
-# Step 4: Define user profiles
-
-# Example user profiles (replace with actual user data)
-users = [
-    {
-        "country": "USA",
-        "activities": {
-            "running": 120,  # Number of running sessions
-            "hiking": 15
-        },
-        "attended_events": ["Devcon"],
-        "coinbase_one": True
-    },
-    {
-        "country": "Canada",
-        "activities": {
-            "cycling": 30,
-            "yoga": 20
-        },
-        "attended_events": ["HealthNY", "Classic Cars 2024"],
-        "coinbase_one": False
-    },
-]
-
 # Function to categorize running sessions
 def categorize_sessions(activity, sessions):
     if activity == "running":
@@ -126,14 +200,15 @@ def categorize_sessions(activity, sessions):
             return "running_1"
     return activity  # Keep original activity for non-running activities
 
-# Preprocess user profiles
-user_profiles = [
-    f"{user['country']} " +
-    ' '.join([categorize_sessions(activity, sessions) for activity, sessions in user['activities'].items()]) + ' ' +
-    ' '.join(user['attended_events']) + ' ' +
-    ('coinbaseone' if user['coinbase_one'] else 'nocoinbaseone')
-    for user in users
-]
+# Preprocess user profiles for TF-IDF vectorization
+def preprocess_user_profile(user):
+    profile_text = user['country_code'] + ' ' + user['country'] + ' '
+    profile_text += ' '.join([categorize_sessions(activity, sessions) for activity, sessions in user['activities'].items() if sessions > 0]) + ' '
+    profile_text += ' '.join(user['attended_events']) + ' '
+    profile_text += 'coinbaseone' if user['coinbase_one'] else 'nocoinbaseone'
+    return profile_text
+
+user_profiles = [preprocess_user_profile(user) for user in users]
 
 # Verify user profiles
 print("User Profiles:")
