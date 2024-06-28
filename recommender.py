@@ -60,7 +60,10 @@ cur_pg = conn_pg.cursor()
 conn_mysql = pymysql.connect(**mysql_params)
 cur_mysql = conn_mysql.cursor()
 
-# Function to get all wallet attestations from the PostgreSQL database
+# Read the CSV data
+attestations_csv = pd.read_csv('attestations.csv')
+
+# Function to get all wallet attestations from both PostgreSQL and CSV data
 def get_all_wallet_attestations():
     query = """
     SELECT "recipient", "schemaId", COUNT(*) as count, MAX("decodedDataJson") as decodedDataJson
@@ -74,7 +77,10 @@ def get_all_wallet_attestations():
     GROUP BY "recipient", "schemaId";
     """
     cur_pg.execute(query)
-    return cur_pg.fetchall()
+    pg_attestations = cur_pg.fetchall()
+    
+    csv_attestations = attestations_csv[['recipient', 'schema.id', 'decodedDataJson']].values.tolist()
+    return pg_attestations, csv_attestations
 
 def extract_country_from_json(decoded_data_json):
     try:
@@ -88,12 +94,13 @@ def extract_country_from_json(decoded_data_json):
         pass
     return "", ""
 
-# Function to create user profiles based on attestations
+# Function to create user profiles based on attestations from both sources
 def create_user_profiles():
-    attestations = get_all_wallet_attestations()
+    pg_attestations, csv_attestations = get_all_wallet_attestations()
     profiles = {}
 
-    for recipient, schema_id, count, decoded_data_json in attestations:
+    # Process PostgreSQL attestations
+    for recipient, schema_id, count, decoded_data_json in pg_attestations:
         if recipient not in profiles:
             profiles[recipient] = {
                 "wallet": recipient,
@@ -114,6 +121,33 @@ def create_user_profiles():
             profile["country"] = country_name
         elif schema_id == '0x0f5b217904f3c65ad40b7af3db62716daddf53bb5db04b1a3ddb730fda0a474b':
             profile["activities"]["running"] += count
+        elif schema_id == '0xf8b05c79f090979bf4a80270aba232dff11a10d9ca55c4f88de95317970f0de9':
+            profile["coinbase"] = True
+        elif schema_id == '0x254bd1b63e0591fefa66818ca054c78627306f253f86be6023725a67ee6bf9f4':
+            profile["coinbase_one"] = True
+
+    # Process CSV attestations
+    for recipient, schema_id, decoded_data_json in csv_attestations:
+        if recipient not in profiles:
+            profiles[recipient] = {
+                "wallet": recipient,
+                "country_code": "",
+                "country": "",
+                "activities": {
+                    "running": 0
+                },
+                "attended_events": [],
+                "coinbase": False,
+                "coinbase_one": False
+            }
+        
+        profile = profiles[recipient]
+        if schema_id == '0x1801901fabd0e6189356b4fb52bb0ab855276d84f7ec140839fbd1f6801ca065':
+            country_code, country_name = extract_country_from_json(decoded_data_json)
+            profile["country_code"] = country_code
+            profile["country"] = country_name
+        elif schema_id == '0x0f5b217904f3c65ad40b7af3db62716daddf53bb5db04b1a3ddb730fda0a474b':
+            profile["activities"]["running"] += 1  # Increment by 1 as count is not present in CSV
         elif schema_id == '0xf8b05c79f090979bf4a80270aba232dff11a10d9ca55c4f88de95317970f0de9':
             profile["coinbase"] = True
         elif schema_id == '0x254bd1b63e0591fefa66818ca054c78627306f253f86be6023725a67ee6bf9f4':
@@ -210,6 +244,17 @@ product_tfidf = vectorizer.fit_transform(product_data['combined_text'].values.as
 # Check the shape of the product TF-IDF matrix
 print("Shape of product TF-IDF matrix:", product_tfidf.shape)
 
+# Print the words for each product
+feature_names = vectorizer.get_feature_names_out()
+for i, product_text in enumerate(product_data['combined_text']):
+    print(f"Product {i+1} words:")
+    tfidf_scores = zip(feature_names, product_tfidf[i].toarray()[0])
+    sorted_tfidf_scores = sorted(tfidf_scores, key=lambda x: x[1], reverse=True)
+    for word, score in sorted_tfidf_scores:
+        if score > 0:
+            print(f"{word}: {score:.4f}")
+    print()
+
 # Function to categorize running sessions
 def categorize_sessions(activity, sessions):
     if activity == "running":
@@ -233,12 +278,15 @@ def preprocess_user_profile(user):
     profile_text += 'coinbaseone' if user['coinbase_one'] else 'nocoinbaseone'
     return profile_text
 
-user_profiles = [preprocess_user_profile(user) for user in users]
+user_profiles_with_wallets = [(user['wallet'], preprocess_user_profile(user)) for user in users]
 
 # Verify user profiles
 print("User Profiles:")
-for profile in user_profiles:
-    print(profile)
+for wallet, profile in user_profiles_with_wallets:
+    print(f"Wallet: {wallet}, Profile: {profile}")
+
+# Extract only the profile texts for TF-IDF vectorization
+user_profiles = [profile for _, profile in user_profiles_with_wallets]
 
 # TF-IDF transformation for user profiles
 user_tfidf = vectorizer.transform(user_profiles)
@@ -280,8 +328,7 @@ def store_recommendations(user_id, recommendations, frame_id):
         conn_mysql.commit()
 
 # Recommend products and store in MySQL database
-for i, user in enumerate(users):
-    print(f"Recommendations for User {i+1}:")
+for i, (wallet, _) in enumerate(user_profiles_with_wallets):
     user_similarities = similarities[i]
     # Sort product indices by similarity score (descending order)
     sorted_indices = np.argsort(user_similarities)[::-1]
@@ -295,8 +342,10 @@ for i, user in enumerate(users):
     while len(recommendations) < 3:
         recommendations.append(None)
     if any(recommendations):  # Only store if there's at least one valid recommendation
-        store_recommendations(user['wallet'], recommendations, i + 1)
-    print(f"- {recommendations} (Top 3 recommendations)")
+        store_recommendations(wallet, recommendations, i + 1)
+        
+        print(f"Recommendations for User {i+1} (Wallet: {wallet}):")
+        print(f"- {recommendations} (Top 3 recommendations)")
 
 # Clean up MySQL connection
 cur_mysql.close()
