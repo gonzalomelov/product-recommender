@@ -150,7 +150,7 @@ product_df = pd.DataFrame(products, columns=['id', 'title', 'description', 'shop
 # Step 2: Prepare data for analysis
 
 # Select relevant columns for product information
-product_data = product_df[['handle', 'title', 'description', 'alt']]
+product_data = product_df[['id', 'handle', 'title', 'description', 'alt']].copy()
 
 # Display the first few rows to understand the structure
 print(product_data.head())
@@ -264,18 +264,39 @@ print(similarities)
 # Set a threshold for similarity
 similarity_threshold = 0.25  # Adjust this value as needed
 
-# Recommend products based on highest similarity
+# Function to store recommendations in MySQL database
+def store_recommendations(user_id, recommendations, frame_id):
+    if any(recommendations):  # Only store if there's at least one valid recommendation
+        values = [(user_id, frame_id, recommendations[0], recommendations[1], recommendations[2])]
+        insert_query = """
+        INSERT INTO UserProduct (walletAddress, frameId, productId1, productId2, productId3)
+        VALUES (%s, %s, %s, %s, %s)
+        ON DUPLICATE KEY UPDATE
+            productId1 = VALUES(productId1),
+            productId2 = VALUES(productId2),
+            productId3 = VALUES(productId3)
+        """
+        cur_mysql.executemany(insert_query, values)
+        conn_mysql.commit()
+
+# Recommend products and store in MySQL database
 for i, user in enumerate(users):
     print(f"Recommendations for User {i+1}:")
     user_similarities = similarities[i]
     # Sort product indices by similarity score (descending order)
     sorted_indices = np.argsort(user_similarities)[::-1]
-    for idx in sorted_indices:
+    recommendations = []
+    for idx in sorted_indices[:3]:  # Get top 3 recommendations
         similarity_score = user_similarities[idx]
         if similarity_score >= similarity_threshold:  # Only recommend if above threshold
             product = product_data.iloc[idx]
-            print(f"- {product['title']} (Similarity Score: {similarity_score:.2f})")
-    print()
+            recommendations.append(product['id'])
+    # Ensure recommendations list has exactly 3 items
+    while len(recommendations) < 3:
+        recommendations.append(None)
+    if any(recommendations):  # Only store if there's at least one valid recommendation
+        store_recommendations(user['wallet'], recommendations, i + 1)
+    print(f"- {recommendations} (Top 3 recommendations)")
 
 # Clean up MySQL connection
 cur_mysql.close()
