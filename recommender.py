@@ -47,7 +47,7 @@ db_params = {
 # Fetching MySQL connection details from environment variables
 mysql_params = {
     'host': os.getenv('MYSQL_HOST'),
-    'port': os.getenv('MYSQL_PORT'),
+    'port': int(os.getenv('MYSQL_PORT')),
     'user': os.getenv('MYSQL_USER'),
     'password': os.getenv('MYSQL_PASSWORD'),
     'database': os.getenv('MYSQL_DATABASE')
