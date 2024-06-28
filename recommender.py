@@ -218,7 +218,8 @@ activity_keywords = {
     "running_50": ["run multiple times a week", "run several times a week"],
     "running_10": ["run weekly", "for weekly running"],
     "running_5": ["occasional running", "run a few times a month"],
-    "running_1": ["run occasionally"]
+    "running_1": ["run occasionally"],
+    "running_0": ["sedentary"]
 }
 
 # Function to infer activity category from text
@@ -227,7 +228,7 @@ def infer_activity_category(text, keywords):
         for phrase in phrases:
             if phrase in text.lower():
                 return category
-    return "running_1"  # Default category if no match found
+    return "running_0" 
 
 # Infer activity categories for products
 product_data.loc[:, 'activity_category'] = product_data['combined_text'].apply(lambda x: infer_activity_category(x, activity_keywords))
@@ -268,6 +269,8 @@ def categorize_sessions(activity, sessions):
             return "running_5"
         elif sessions > 0:
             return "running_1"
+        elif sessions == 0:
+            return "running_0"
     return activity  # Keep original activity for non-running activities
 
 # Preprocess user profiles for TF-IDF vectorization
