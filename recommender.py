@@ -169,14 +169,14 @@ def clean_text(text):
     return text
 
 # Clean 'description' column
-product_data['description'] = product_data['description'].astype(str)
-product_data['cleaned_description'] = product_data['description'].apply(clean_text)
+product_data.loc[:, 'description'] = product_data['description'].astype(str)
+product_data.loc[:, 'cleaned_description'] = product_data['description'].apply(clean_text)
 
 # Combine relevant text columns for TF-IDF vectorization
-product_data['combined_text'] = product_data['title'] + ' ' + product_data['cleaned_description'] + ' ' + product_data['alt'].fillna('')
+product_data.loc[:, 'combined_text'] = product_data['title'] + ' ' + product_data['cleaned_description'] + ' ' + product_data['alt'].fillna('')
 
 # Convert combined_text to string type
-product_data['combined_text'] = product_data['combined_text'].astype(str)
+product_data.loc[:, 'combined_text'] = product_data['combined_text'].astype(str)
 
 # Define keywords and phrases for activity categories
 activity_keywords = {
@@ -196,10 +196,10 @@ def infer_activity_category(text, keywords):
     return "running_1"  # Default category if no match found
 
 # Infer activity categories for products
-product_data['activity_category'] = product_data['combined_text'].apply(lambda x: infer_activity_category(x, activity_keywords))
+product_data.loc[:, 'activity_category'] = product_data['combined_text'].apply(lambda x: infer_activity_category(x, activity_keywords))
 
 # Update combined text with inferred activity category
-product_data['combined_text'] = product_data['combined_text'] + ' ' + product_data['activity_category']
+product_data.loc[:, 'combined_text'] = product_data['combined_text'] + ' ' + product_data['activity_category']
 
 # Step 3: Vectorize text data (TF-IDF)
 
