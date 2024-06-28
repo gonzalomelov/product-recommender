@@ -5,8 +5,11 @@ from sklearn.metrics.pairwise import cosine_similarity
 import re
 import json
 import psycopg2
+import pymysql
 import subprocess
 import sys
+import os
+from dotenv import load_dotenv
 from country_codes import country_code_to_name  # Import the dictionary
 
 # Function to check if running in a Jupyter notebook
@@ -26,21 +29,38 @@ def is_notebook():
 if is_notebook():
     subprocess.check_call([sys.executable, "-m", "pip", "install", "gdown"])
     subprocess.check_call([sys.executable, "-m", "pip", "install", "psycopg2-binary"])
+    subprocess.check_call([sys.executable, "-m", "pip", "install", "pymysql"])
+    subprocess.check_call([sys.executable, "-m", "pip", "install", "python-dotenv"])
 
-# Database connection details
+# Load environment variables from .env file
+load_dotenv()
+
+# Fetching PostgreSQL connection details from environment variables
 db_params = {
-    'dbname': 'eas-index',
-    'user': 'postgres',
-    'password': 'postgresPassword',
-    'host': '127.0.0.1',
-    'port': '5432'
+    'dbname': os.getenv('PG_DBNAME'),
+    'user': os.getenv('PG_USER'),
+    'password': os.getenv('PG_PASSWORD'),
+    'host': os.getenv('PG_HOST'),
+    'port': os.getenv('PG_PORT')
+}
+
+# Fetching MySQL connection details from environment variables
+mysql_params = {
+    'host': os.getenv('MYSQL_HOST'),
+    'user': os.getenv('MYSQL_USER'),
+    'password': os.getenv('MYSQL_PASSWORD'),
+    'database': os.getenv('MYSQL_DATABASE')
 }
 
 # Connect to the PostgreSQL database
-conn = psycopg2.connect(**db_params)
-cur = conn.cursor()
+conn_pg = psycopg2.connect(**db_params)
+cur_pg = conn_pg.cursor()
 
-# Function to get all wallet attestations from the database
+# Connect to the MySQL database
+conn_mysql = pymysql.connect(**mysql_params)
+cur_mysql = conn_mysql.cursor()
+
+# Function to get all wallet attestations from the PostgreSQL database
 def get_all_wallet_attestations():
     query = """
     SELECT "recipient", "schemaId", COUNT(*) as count, MAX("decodedDataJson") as decodedDataJson
@@ -53,8 +73,8 @@ def get_all_wallet_attestations():
     )
     GROUP BY "recipient", "schemaId";
     """
-    cur.execute(query)
-    return cur.fetchall()
+    cur_pg.execute(query)
+    return cur_pg.fetchall()
 
 def extract_country_from_json(decoded_data_json):
     try:
@@ -108,24 +128,29 @@ print("User Profiles:")
 for user in users:
     print(user)
 
-# Clean up
-cur.close()
-conn.close()
+# Clean up PostgreSQL connection
+cur_pg.close()
+conn_pg.close()
 
-# Download the product data file from Google Drive
-import gdown
-product_file_id = '1KLZGUwL0g86QvY5o9Zmyml_Qo1aqgtK9'  # Replace with your actual file ID
-product_url = f'https://drive.google.com/uc?id={product_file_id}'
-product_output = 'products_export_1.csv'
-gdown.download(product_url, product_output, quiet=False)
+# Function to get all products from the MySQL database
+def get_all_products():
+    query = """
+    SELECT id, title, description, shop, handle, variantId, variantFormattedPrice, alt, image, createdAt
+    FROM Product;
+    """
+    cur_mysql.execute(query)
+    return cur_mysql.fetchall()
 
-# Load the data from CSV
-product_df = pd.read_csv('products_export_1.csv')
+# Fetch products from MySQL database
+products = get_all_products()
+
+# Convert product data to a DataFrame
+product_df = pd.DataFrame(products, columns=['id', 'title', 'description', 'shop', 'handle', 'variantId', 'variantFormattedPrice', 'alt', 'image', 'createdAt'])
 
 # Step 2: Prepare data for analysis
 
 # Select relevant columns for product information
-product_data = product_df[['Handle', 'Title', 'Body (HTML)', 'Tags']]
+product_data = product_df[['handle', 'title', 'description', 'alt']]
 
 # Display the first few rows to understand the structure
 print(product_data.head())
@@ -143,12 +168,12 @@ def clean_text(text):
     text = re.sub(r'[^\w\s]', '', text).lower()
     return text
 
-# Clean 'Body (HTML)' column
-product_data['Body (HTML)'] = product_data['Body (HTML)'].astype(str)
-product_data['cleaned_body'] = product_data['Body (HTML)'].apply(clean_text)
+# Clean 'description' column
+product_data['description'] = product_data['description'].astype(str)
+product_data['cleaned_description'] = product_data['description'].apply(clean_text)
 
 # Combine relevant text columns for TF-IDF vectorization
-product_data['combined_text'] = product_data['Title'] + ' ' + product_data['cleaned_body'] + ' ' + product_data['Tags'].fillna('')
+product_data['combined_text'] = product_data['title'] + ' ' + product_data['cleaned_description'] + ' ' + product_data['alt'].fillna('')
 
 # Convert combined_text to string type
 product_data['combined_text'] = product_data['combined_text'].astype(str)
@@ -249,5 +274,9 @@ for i, user in enumerate(users):
         similarity_score = user_similarities[idx]
         if similarity_score >= similarity_threshold:  # Only recommend if above threshold
             product = product_data.iloc[idx]
-            print(f"- {product['Title']} (Similarity Score: {similarity_score:.2f})")
+            print(f"- {product['title']} (Similarity Score: {similarity_score:.2f})")
     print()
+
+# Clean up MySQL connection
+cur_mysql.close()
+conn_mysql.close()
