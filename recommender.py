@@ -279,6 +279,7 @@ def preprocess_user_profile(user):
     profile_text += ' '.join([categorize_sessions(activity, sessions) for activity, sessions in user['activities'].items() if sessions > 0]) + ' '
     profile_text += ' '.join(user['attended_events']) + ' '
     profile_text += 'coinbaseone' if user['coinbase_one'] else 'nocoinbaseone'
+    profile_text += ' coinbase' if user['coinbase'] else ' nocoinbase'
     return profile_text
 
 user_profiles_with_wallets = [(user['wallet'], preprocess_user_profile(user)) for user in users]
