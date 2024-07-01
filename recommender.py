@@ -63,7 +63,6 @@ cur_mysql = conn_mysql.cursor()
 
 # Read the CSV data
 attestations_csv = pd.read_csv('attestations.csv')
-coinbaseone_csv = pd.read_csv('coinbaseone.csv')
 
 # Function to get all wallet attestations from both PostgreSQL and CSV data
 def get_all_wallet_attestations():
@@ -82,9 +81,8 @@ def get_all_wallet_attestations():
     pg_attestations = cur_pg.fetchall()
     
     csv_attestations = attestations_csv[['recipient', 'schema.id', 'decodedDataJson']].values.tolist()
-    coinbaseone_attestations = coinbaseone_csv[['recipient', 'schema.id', 'decodedDataJson']].values.tolist()
     
-    return pg_attestations, csv_attestations, coinbaseone_attestations
+    return pg_attestations, csv_attestations
 
 def extract_country_from_json(decoded_data_json):
     try:
@@ -100,7 +98,7 @@ def extract_country_from_json(decoded_data_json):
 
 # Function to create user profiles based on attestations from both sources
 def create_user_profiles():
-    pg_attestations, csv_attestations, coinbaseone_attestations = get_all_wallet_attestations()
+    pg_attestations, csv_attestations = get_all_wallet_attestations()
     profiles = {}
 
     # Process PostgreSQL attestations
@@ -157,25 +155,6 @@ def create_user_profiles():
         elif schema_id == '0x254bd1b63e0591fefa66818ca054c78627306f253f86be6023725a67ee6bf9f4':
             profile["coinbase_one"] = True
 
-    # Process Coinbase One CSV attestations
-    for recipient, schema_id, decoded_data_json in coinbaseone_attestations:
-        if recipient not in profiles:
-            profiles[recipient] = {
-                "wallet": recipient,
-                "country_code": "",
-                "country": "",
-                "activities": {
-                    "running": 0
-                },
-                "attended_events": [],
-                "coinbase": False,
-                "coinbase_one": False
-            }
-        
-        profile = profiles[recipient]
-        if schema_id == '0x254bd1b63e0591fefa66818ca054c78627306f253f86be6023725a67ee6bf9f4':
-            profile["coinbase_one"] = True
-    
     return list(profiles.values())
 
 # Create user profiles
