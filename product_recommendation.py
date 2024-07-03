@@ -22,9 +22,8 @@ def get_all_products(cur_mysql):
     cur_mysql.execute(query)
     return cur_mysql.fetchall()
 
-def store_recommendations(cur_mysql, conn_mysql, user_id, recommendations, frame_id):
-    if any(recommendations):
-        values = [(user_id, frame_id, recommendations[0], recommendations[1], recommendations[2])]
+def store_recommendations_batch(cur_mysql, conn_mysql, recommendations_batch):
+    if recommendations_batch:
         upsert_query = """
         INSERT INTO UserProduct (walletAddress, frameId, productId1, productId2, productId3)
         VALUES (%s, %s, %s, %s, %s)
@@ -33,7 +32,7 @@ def store_recommendations(cur_mysql, conn_mysql, user_id, recommendations, frame
             productId2 = VALUES(productId2),
             productId3 = VALUES(productId3)
         """
-        cur_mysql.executemany(upsert_query, values)
+        cur_mysql.executemany(upsert_query, recommendations_batch)
         conn_mysql.commit()
 
 def recommend_products(cur_mysql, conn_mysql, users):
@@ -142,6 +141,7 @@ def recommend_products(cur_mysql, conn_mysql, users):
         similarity_threshold = 0.25  # Adjust this value as needed
 
         recommendations_start_time = time.time()
+        recommendations_batch = []
         for i, (wallet, _) in enumerate(user_profiles_with_wallets):
             user_similarities = similarities[i]
             sorted_indices = np.argsort(user_similarities)[::-1]
@@ -154,10 +154,14 @@ def recommend_products(cur_mysql, conn_mysql, users):
             while len(recommendations) < 3:
                 recommendations.append(None)
             if any(recommendations):
-                store_recommendations(cur_mysql, conn_mysql, wallet, recommendations, frame['id'])
+                recommendations_batch.append((wallet, frame['id'], recommendations[0], recommendations[1], recommendations[2]))
 
                 print(f"Recommendations for User {i+1} (Wallet: {wallet}) in Frame {frame['id']}:")
                 print(f"- {recommendations} (Top 3 recommendations)")
+
+        if recommendations_batch:
+            store_recommendations_batch(cur_mysql, conn_mysql, recommendations_batch)
+            print(f"Recommendations stored for frame ID {frame['id']}")
 
         print(f"Time to process recommendations for frame ID {frame['id']}: {time.time() - recommendations_start_time:.2f} seconds")
         print(f"Total time to process frame ID {frame['id']}: {time.time() - frame_start_time:.2f} seconds")
