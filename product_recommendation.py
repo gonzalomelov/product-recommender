@@ -24,7 +24,7 @@ def get_all_products(cur_mysql):
 def store_recommendations(cur_mysql, conn_mysql, user_id, recommendations, frame_id):
     if any(recommendations):
         values = [(user_id, frame_id, recommendations[0], recommendations[1], recommendations[2])]
-        insert_query = """
+        upsert_query = """
         INSERT INTO UserProduct (walletAddress, frameId, productId1, productId2, productId3)
         VALUES (%s, %s, %s, %s, %s)
         ON DUPLICATE KEY UPDATE
@@ -32,7 +32,7 @@ def store_recommendations(cur_mysql, conn_mysql, user_id, recommendations, frame
             productId2 = VALUES(productId2),
             productId3 = VALUES(productId3)
         """
-        cur_mysql.executemany(insert_query, values)
+        cur_mysql.executemany(upsert_query, values)
         conn_mysql.commit()
 
 def recommend_products(cur_mysql, conn_mysql, users):
