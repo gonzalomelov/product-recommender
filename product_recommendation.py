@@ -1,3 +1,4 @@
+import time
 import pandas as pd
 import numpy as np
 from sklearn.feature_extraction.text import TfidfVectorizer
@@ -57,6 +58,7 @@ def recommend_products(cur_mysql, conn_mysql, users):
     }
 
     for _, frame in frames_df.iterrows():
+        frame_start_time = time.time()
         frame_shop = frame['shop']
         print(f"Processing frame ID: {frame['id']} with shop: {frame_shop}")
 
@@ -75,13 +77,15 @@ def recommend_products(cur_mysql, conn_mysql, users):
 
         # Infer activity categories for products
         product_data['activity_category'] = product_data['combined_text'].apply(lambda x: infer_activity_category(x, activity_keywords))
-
+        
         # Update combined text with inferred activity category
         product_data['combined_text'] = product_data['combined_text'] + ' ' + product_data['activity_category']
 
         # TF-IDF vectorization
+        tfidf_vectorization_start = time.time()
         vectorizer = TfidfVectorizer(stop_words='english')
         product_tfidf = vectorizer.fit_transform(product_data['combined_text'].values.astype('U'))
+        print(f"Time for TF-IDF vectorization for frame ID {frame['id']}: {time.time() - tfidf_vectorization_start:.2f} seconds")
 
         # Check the shape of the product TF-IDF matrix
         print(f"Shape of product TF-IDF matrix for frame ID {frame['id']}:", product_tfidf.shape)
@@ -114,10 +118,11 @@ def recommend_products(cur_mysql, conn_mysql, users):
             print(f"Wallet: {wallet}, Profile: {profile}")
 
         # Extract only the profile texts for TF-IDF vectorization
+        user_tfidf_start = time.time()
         user_profiles = [profile for _, profile in user_profiles_with_wallets]
-
         # TF-IDF transformation for user profiles
         user_tfidf = vectorizer.transform(user_profiles)
+        print(f"Time for TF-IDF transformation of user profiles: {time.time() - user_tfidf_start:.2f} seconds")
 
         # Check the shape of the user TF-IDF matrix
         print(f"Shape of user TF-IDF matrix for frame ID {frame['id']}:", user_tfidf.shape)
@@ -132,11 +137,11 @@ def recommend_products(cur_mysql, conn_mysql, users):
         # Debug: Check similarity scores
         print(f"Similarity Scores for frame ID {frame['id']}:")
         print(similarities)
-
-        # Set a threshold for similarity
+        
+        # Set a threshold for similarity and recommend products
         similarity_threshold = 0.25  # Adjust this value as needed
 
-        # Recommend products and store in MySQL database
+        recommendations_start_time = time.time()
         for i, (wallet, _) in enumerate(user_profiles_with_wallets):
             user_similarities = similarities[i]
             sorted_indices = np.argsort(user_similarities)[::-1]
@@ -153,5 +158,8 @@ def recommend_products(cur_mysql, conn_mysql, users):
 
                 print(f"Recommendations for User {i+1} (Wallet: {wallet}) in Frame {frame['id']}:")
                 print(f"- {recommendations} (Top 3 recommendations)")
+
+        print(f"Time to process recommendations for frame ID {frame['id']}: {time.time() - recommendations_start_time:.2f} seconds")
+        print(f"Total time to process frame ID {frame['id']}: {time.time() - frame_start_time:.2f} seconds")
 
     return products_df
