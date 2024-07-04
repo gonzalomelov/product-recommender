@@ -111,17 +111,25 @@ def recommend_products(cur_mysql, conn_mysql, users):
 
         user_profiles_with_wallets = [(user['wallet'], preprocess_user_profile(user)) for user in users]
 
-        # Verify user profiles
-        print("User Profiles:")
+        # Group user profiles by their text
+        profile_groups = {}
         for wallet, profile in user_profiles_with_wallets:
-            print(f"Wallet: {wallet}, Profile: {profile}")
+            if profile not in profile_groups:
+                profile_groups[profile] = []
+            profile_groups[profile].append(wallet)
 
-        # Extract only the profile texts for TF-IDF vectorization
+        print(f"Number of user profile groups: {len(profile_groups)}")
+
+        for profile, wallets in profile_groups.items():
+            print(f"Group with profile '{profile}' has {len(wallets)} wallets")
+
+        # Extract only the unique profile texts for TF-IDF vectorization
+        unique_profiles = list(profile_groups.keys())
+
+        # TF-IDF transformation for unique user profiles
         user_tfidf_start = time.time()
-        user_profiles = [profile for _, profile in user_profiles_with_wallets]
-        # TF-IDF transformation for user profiles
-        user_tfidf = vectorizer.transform(user_profiles)
-        print(f"Time for TF-IDF transformation of user profiles: {time.time() - user_tfidf_start:.2f} seconds")
+        user_tfidf = vectorizer.transform(unique_profiles)
+        print(f"Time for TF-IDF transformation of unique user profiles: {time.time() - user_tfidf_start:.2f} seconds")
 
         # Check the shape of the user TF-IDF matrix
         print(f"Shape of user TF-IDF matrix for frame ID {frame['id']}:", user_tfidf.shape)
@@ -130,19 +138,19 @@ def recommend_products(cur_mysql, conn_mysql, users):
         print("TF-IDF Vocabulary:")
         print(vectorizer.vocabulary_)
 
-        # Compute cosine similarity between user profiles and product descriptions
+        # Compute cosine similarity between unique user profiles and product descriptions
         similarities = cosine_similarity(user_tfidf, product_tfidf)
 
         # Debug: Check similarity scores
         print(f"Similarity Scores for frame ID {frame['id']}:")
         print(similarities)
-        
+
         # Set a threshold for similarity and recommend products
         similarity_threshold = 0.25  # Adjust this value as needed
 
         recommendations_start_time = time.time()
         recommendations_batch = []
-        for i, (wallet, _) in enumerate(user_profiles_with_wallets):
+        for i, profile in enumerate(unique_profiles):
             user_similarities = similarities[i]
             sorted_indices = np.argsort(user_similarities)[::-1]
             recommendations = []
@@ -154,10 +162,11 @@ def recommend_products(cur_mysql, conn_mysql, users):
             while len(recommendations) < 3:
                 recommendations.append(None)
             if any(recommendations):
-                recommendations_batch.append((wallet, frame['id'], recommendations[0], recommendations[1], recommendations[2]))
+                for wallet in profile_groups[profile]:
+                    recommendations_batch.append((wallet, frame['id'], recommendations[0], recommendations[1], recommendations[2]))
 
-                print(f"Recommendations for User {i+1} (Wallet: {wallet}) in Frame {frame['id']}:")
-                print(f"- {recommendations} (Top 3 recommendations)")
+                    print(f"Recommendations for User (Wallet: {wallet}) in Frame {frame['id']}:")
+                    print(f"- {recommendations} (Top 3 recommendations)")
 
         if recommendations_batch:
             store_recommendations_batch(cur_mysql, conn_mysql, recommendations_batch)
