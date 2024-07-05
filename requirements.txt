@@ -4,3 +4,4 @@ scikit-learn
 psycopg2-binary
 pymysql
 python-dotenv
+ollama
