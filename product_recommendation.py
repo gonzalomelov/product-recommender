@@ -5,11 +5,18 @@ from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_similarity
 from data_processing import clean_text, infer_activity_category, categorize_sessions
 
+SIMILARITY_THRESHOLD = 0.15 # Adjust this value as needed
+
 def get_all_frames(cur_mysql):
     query = """
     SELECT id, title, shop, matchingCriteria
     FROM Frame
-    WHERE matchingCriteria = 'ALL';
+    WHERE TRUE
+        AND matchingCriteria = 'ALL'
+        -- AND shop = 'quickstart-62fbe4d4.myshopify.com' -- threshold 0.15
+        -- AND shop = 'it-is-football-season.myshopify.com' -- threshold 0.25
+        -- AND shop = 'nouns4health.xyz' -- threshold 0.03
+        ;
     """
     cur_mysql.execute(query)
     return cur_mysql.fetchall()
@@ -17,34 +24,78 @@ def get_all_frames(cur_mysql):
 def get_all_products(cur_mysql):
     query = """
     SELECT id, title, description, shop, handle, variantId, variantFormattedPrice, alt, image, createdAt
-    FROM Product;
+    FROM Product
+    WHERE TRUE
+        -- AND shop = 'quickstart-62fbe4d4.myshopify.com'
+        -- AND shop = 'it-is-football-season.myshopify.com'
+        -- AND shop = 'nouns4health.xyz'
+        ;
     """
     cur_mysql.execute(query)
     return cur_mysql.fetchall()
 
-def store_recommendations_batch(cur_mysql, conn_mysql, recommendations_batch):
-    if recommendations_batch:
+def store_group_profiles(cur_mysql, conn_mysql, group_profiles):
+    if group_profiles:
         upsert_query = """
-        INSERT INTO UserProduct (walletAddress, frameId, productId1, productId2, productId3)
-        VALUES (%s, %s, %s, %s, %s)
-        ON DUPLICATE KEY UPDATE
-            productId1 = VALUES(productId1),
-            productId2 = VALUES(productId2),
-            productId3 = VALUES(productId3)
+        INSERT INTO GroupProfile (profileText, createdAt)
+        VALUES (%s, NOW())
+        ON DUPLICATE KEY UPDATE profileText = VALUES(profileText)
         """
-        cur_mysql.executemany(upsert_query, recommendations_batch)
+        cur_mysql.executemany(upsert_query, [(profile,) for profile in group_profiles])
         conn_mysql.commit()
+        print(f"Stored {len(group_profiles)} group profiles to the database.")
+
+def store_group_wallets(cur_mysql, conn_mysql, group_wallets):
+    if group_wallets:
+        upsert_query = """
+        INSERT INTO GroupWallet (profileText, walletAddress, createdAt)
+        VALUES (%s, %s, NOW())
+        ON DUPLICATE KEY UPDATE
+        profileText = VALUES(profileText), walletAddress = VALUES(walletAddress)
+        """
+        cur_mysql.executemany(upsert_query, group_wallets)
+        conn_mysql.commit()
+        print(f"Stored {len(group_wallets)} group wallets to the database.")
+
+def store_group_recommendations(cur_mysql, conn_mysql, group_recommendations):
+    if group_recommendations:
+        upsert_query = """
+        INSERT INTO GroupRecommendation (frameId, profileText, productId, productTitle, message, createdAt)
+        VALUES (%s, %s, %s, %s, %s, NOW())
+        ON DUPLICATE KEY UPDATE
+        productTitle = VALUES(productTitle), message = VALUES(message)
+        """
+        print(f"group_recommendations: {group_recommendations}")  # Debugging line
+        cur_mysql.executemany(upsert_query, group_recommendations)
+        conn_mysql.commit()
+        print(f"Stored {len(group_recommendations)} group recommendations to the database.")
+
+def hash_profile_text(profile_text):
+    return hashlib.sha256(profile_text.encode('utf-8')).hexdigest()[:100]
 
 def recommend_products(cur_mysql, conn_mysql, users):
     # Fetch frames from MySQL database
     frames = get_all_frames(cur_mysql)
+    if not frames:
+        print("No frames found in the database.")
+        return
+
     frames_df = pd.DataFrame(frames, columns=['id', 'title', 'shop', 'matchingCriteria'])
     print("Frames fetched from database:", frames_df)  # Debugging line
 
     # Fetch products from MySQL database
     products = get_all_products(cur_mysql)
+    if not products:
+        print("No products found in the database.")
+        return
+
     products_df = pd.DataFrame(products, columns=['id', 'title', 'description', 'shop', 'handle', 'variantId', 'variantFormattedPrice', 'alt', 'image', 'createdAt'])
     print("Products fetched from database:", products_df)  # Debugging line
+
+    # Preprocess products
+    products_df['description'] = products_df['description'].astype(str)
+    products_df['cleaned_description'] = products_df['description'].apply(clean_text)
+    products_df['combined_text'] = products_df['title'] + ' ' + products_df['cleaned_description'] + ' ' + products_df['alt'].fillna('')
 
     # Define keywords and phrases for activity categories
     activity_keywords = {
@@ -56,123 +107,164 @@ def recommend_products(cur_mysql, conn_mysql, users):
         "running_0": ["sedentary"]
     }
 
+    # Infer multiple activity categories for products
+    def infer_activity_categories(text, keywords):
+        matched_categories = []
+        for category, phrases in keywords.items():
+            if any(phrase in text for phrase in phrases):
+                matched_categories.append(category)
+        return ' '.join(matched_categories)
+
+    # Preprocess products
+    products_df['description'] = products_df['description'].astype(str)
+    products_df['cleaned_description'] = products_df['description'].apply(clean_text)
+    products_df['combined_text'] = products_df['title'] + ' ' + products_df['cleaned_description'] + ' ' + products_df['alt'].fillna('')
+    products_df['activity_categories'] = products_df['combined_text'].apply(lambda x: infer_activity_categories(x, activity_keywords))
+    products_df['combined_text'] = products_df['combined_text'] + ' ' + products_df['activity_categories']
+
+    # Preprocess user profiles for TF-IDF vectorization (considering multiple activities)
+    def preprocess_user_profile(user):
+        profile_text = user['country_code'] + ' ' + user['country'] + ' '
+        profile_text += ' '.join([categorize_sessions(activity, sessions) for activity, sessions in user['activities'].items() if sessions > 0]) + ' '
+        profile_text += ' '.join(user['attended_events']) + ' '
+        profile_text += 'coinbaseone' if user['coinbase_one'] else 'nocoinbaseone'
+        profile_text += ' coinbase' if user['coinbase'] else ' nocoinbase'
+        return profile_text
+
+    # Process users
+    user_profiles_with_wallets = [(user['wallet'], preprocess_user_profile(user)) for user in users]
+
+    # Group user profiles by their text
+    profile_groups = {}
+    for wallet, profile in user_profiles_with_wallets:
+        if profile not in profile_groups:
+            profile_groups[profile] = []
+        profile_groups[profile].append(wallet)
+
+    print(f"Number of user profile groups: {len(profile_groups)}")
+
+    for profile, wallets in profile_groups.items():
+        print(f"Group with profile '{profile}' has {len(wallets)} wallets")
+
+    # Extract only the unique profile texts for TF-IDF vectorization
+    unique_profiles = list(profile_groups.keys())
+
+    # Generate hashed group IDs
+    group_profiles = [profile for profile in unique_profiles]
+    store_group_profiles(cur_mysql, conn_mysql, group_profiles)
+
+    # Fetch group profile IDs
+    cur_mysql.execute("SELECT profileText FROM GroupProfile")
+    group_profiles_df = pd.DataFrame(cur_mysql.fetchall(), columns=['profileText'])
+    profile_to_group_id = {profile: profile for profile in group_profiles_df['profileText']}
+
+    # Combine product descriptions and user profiles for TF-IDF vectorization
+    combined_corpus = list(products_df['combined_text']) + unique_profiles
+
+    # Check the combined corpus
+    print("Combined Corpus:", combined_corpus)
+
+    # TF-IDF vectorization
+    tfidf_vectorization_start = time.time()
+    vectorizer = TfidfVectorizer(stop_words='english')
+    tfidf_matrix = vectorizer.fit_transform(combined_corpus)
+    print(f"Time for TF-IDF vectorization: {time.time() - tfidf_vectorization_start:.2f} seconds")
+
+    # Split TF-IDF matrix into products and user profiles
+    product_tfidf = tfidf_matrix[:len(products_df)]
+    user_tfidf = tfidf_matrix[len(products_df):]
+
+    # Check the shape of the product TF-IDF matrix
+    print(f"Shape of product TF-IDF matrix:", product_tfidf.shape)
+
+    # Check the shape of the user TF-IDF matrix
+    print(f"Shape of user TF-IDF matrix:", user_tfidf.shape)
+
+    # Compute cosine similarity between unique user profiles and product descriptions
+    similarities = cosine_similarity(user_tfidf, product_tfidf)
+
+    # # Debug: Check similarity scores
+    # print(f"Similarity Scores:")
+    # np.set_printoptions(threshold=np.inf)
+    # print(similarities)
+    # np.set_printoptions()
+
+    # Set a threshold for similarity and recommend products
+    similarity_threshold = SIMILARITY_THRESHOLD
+
+    group_recommendations = []
+    group_wallets = []
+
+    # Start timing the recommendation processing
+    recommendation_processing_start = time.time()
+
     for _, frame in frames_df.iterrows():
-        frame_start_time = time.time()
+        frame_id = frame['id']
         frame_shop = frame['shop']
-        print(f"Processing frame ID: {frame['id']} with shop: {frame_shop}")
+
+        # Debug: Print frame
+        print(f"Frame:")
+        print(frame_shop)
 
         # Filter products by the frame's shop
         frame_products = products_df[products_df['shop'] == frame_shop].copy()
 
-        # Select relevant columns for product information
-        product_data = frame_products[['id', 'handle', 'title', 'description', 'alt']].copy()
-
-        # Clean 'description' column
-        product_data['description'] = product_data['description'].astype(str)
-        product_data['cleaned_description'] = product_data['description'].apply(clean_text)
+        # Clean 'description' column for frame-specific products
+        frame_products['cleaned_description'] = frame_products['description'].astype(str).apply(clean_text)
 
         # Combine relevant text columns for TF-IDF vectorization
-        product_data['combined_text'] = product_data['title'] + ' ' + product_data['cleaned_description'] + ' ' + product_data['alt'].fillna('')
+        frame_products['combined_text'] = frame_products['title'] + ' ' + frame_products['cleaned_description'] + ' ' + frame_products['alt'].fillna('')
+        frame_products['activity_categories'] = frame_products['combined_text'].apply(lambda x: infer_activity_categories(x, activity_keywords))
+        frame_products['combined_text'] = frame_products['combined_text'] + ' ' + frame_products['activity_categories']
 
-        # Infer activity categories for products
-        product_data['activity_category'] = product_data['combined_text'].apply(lambda x: infer_activity_category(x, activity_keywords))
-        
-        # Update combined text with inferred activity category
-        product_data['combined_text'] = product_data['combined_text'] + ' ' + product_data['activity_category']
+        # Debug: Print frame products
+        print(f"Frame products:")
+        print(frame_products)
 
-        # TF-IDF vectorization
-        tfidf_vectorization_start = time.time()
-        vectorizer = TfidfVectorizer(stop_words='english')
-        product_tfidf = vectorizer.fit_transform(product_data['combined_text'].values.astype('U'))
-        print(f"Time for TF-IDF vectorization for frame ID {frame['id']}: {time.time() - tfidf_vectorization_start:.2f} seconds")
+        # TF-IDF vectorization for frame-specific products
+        frame_product_tfidf = vectorizer.transform(frame_products['combined_text'].values.astype('U'))
 
-        # Check the shape of the product TF-IDF matrix
-        print(f"Shape of product TF-IDF matrix for frame ID {frame['id']}:", product_tfidf.shape)
+        # Compute cosine similarity between unique user profiles and frame-specific product descriptions
+        frame_similarities = cosine_similarity(user_tfidf, frame_product_tfidf)
 
-        # Print the words for each product
-        feature_names = vectorizer.get_feature_names_out()
-        for i, product_text in enumerate(product_data['combined_text']):
-            print(f"Product {i+1} words in frame ID {frame['id']}:")
-            tfidf_scores = zip(feature_names, product_tfidf[i].toarray()[0])
-            sorted_tfidf_scores = sorted(tfidf_scores, key=lambda x: x[1], reverse=True)
-            for word, score in sorted_tfidf_scores:
-                if score > 0:
-                    print(f"{word}: {score:.4f}")
-            print()
-
-        # Preprocess user profiles for TF-IDF vectorization
-        def preprocess_user_profile(user):
-            profile_text = user['country_code'] + ' ' + user['country'] + ' '
-            profile_text += ' '.join([categorize_sessions(activity, sessions) for activity, sessions in user['activities'].items() if sessions > 0]) + ' '
-            profile_text += ' '.join(user['attended_events']) + ' '
-            profile_text += 'coinbaseone' if user['coinbase_one'] else 'nocoinbaseone'
-            profile_text += ' coinbase' if user['coinbase'] else ' nocoinbase'
-            return profile_text
-
-        user_profiles_with_wallets = [(user['wallet'], preprocess_user_profile(user)) for user in users]
-
-        # Group user profiles by their text
-        profile_groups = {}
-        for wallet, profile in user_profiles_with_wallets:
-            if profile not in profile_groups:
-                profile_groups[profile] = []
-            profile_groups[profile].append(wallet)
-
-        print(f"Number of user profile groups: {len(profile_groups)}")
-
-        for profile, wallets in profile_groups.items():
-            print(f"Group with profile '{profile}' has {len(wallets)} wallets")
-
-        # Extract only the unique profile texts for TF-IDF vectorization
-        unique_profiles = list(profile_groups.keys())
-
-        # TF-IDF transformation for unique user profiles
-        user_tfidf_start = time.time()
-        user_tfidf = vectorizer.transform(unique_profiles)
-        print(f"Time for TF-IDF transformation of unique user profiles: {time.time() - user_tfidf_start:.2f} seconds")
-
-        # Check the shape of the user TF-IDF matrix
-        print(f"Shape of user TF-IDF matrix for frame ID {frame['id']}:", user_tfidf.shape)
-
-        # Verify presence of "coinbaseone" in TF-IDF vocabulary
-        print("TF-IDF Vocabulary:")
-        print(vectorizer.vocabulary_)
-
-        # Compute cosine similarity between unique user profiles and product descriptions
-        similarities = cosine_similarity(user_tfidf, product_tfidf)
-
-        # Debug: Check similarity scores
-        print(f"Similarity Scores for frame ID {frame['id']}:")
-        print(similarities)
-
-        # Set a threshold for similarity and recommend products
-        similarity_threshold = 0.25  # Adjust this value as needed
-
-        recommendations_start_time = time.time()
-        recommendations_batch = []
         for i, profile in enumerate(unique_profiles):
-            user_similarities = similarities[i]
+            user_similarities = frame_similarities[i]
             sorted_indices = np.argsort(user_similarities)[::-1]
+
             recommendations = []
+            matching_texts = []
             for idx in sorted_indices[:3]:
                 similarity_score = user_similarities[idx]
                 if similarity_score >= similarity_threshold:
-                    product = product_data.iloc[idx]
+                    product = frame_products.iloc[idx]
                     recommendations.append(product['id'])
+                    matching_texts.append(product['combined_text'])
             while len(recommendations) < 3:
                 recommendations.append(None)
             if any(recommendations):
+                profile_text = profile
                 for wallet in profile_groups[profile]:
-                    recommendations_batch.append((wallet, frame['id'], recommendations[0], recommendations[1], recommendations[2]))
+                    group_wallets.append((profile_text, wallet))
+                for rec_idx, product_id in enumerate(recommendations):
+                    if product_id:
+                        product_title = frame_products.loc[frame_products['id'] == product_id, 'title'].values[0]
+                        message = f"Recommended product: {matching_texts[rec_idx]}"
+                        group_recommendations.append((frame_id, profile_text, product_id, product_title, message))
+                print(f"Recommendations for Profile {profile_text} in Frame {frame_id}:")
+                for rec_idx, product_id in enumerate(recommendations):
+                    if product_id:
+                        product_title = frame_products.loc[frame_products['id'] == product_id, 'title'].values[0]
+                        print(f"- Product ID: {product_id}, Product Title: {product_title}")
+                        print(f"Message: {matching_texts[rec_idx]}")
 
-                    print(f"Recommendations for User (Wallet: {wallet}) in Frame {frame['id']}:")
-                    print(f"- {recommendations} (Top 3 recommendations)")
+    if group_recommendations:
+        store_group_recommendations(cur_mysql, conn_mysql, group_recommendations)
+        print(f"Group recommendations stored")
 
-        if recommendations_batch:
-            store_recommendations_batch(cur_mysql, conn_mysql, recommendations_batch)
-            print(f"Recommendations stored for frame ID {frame['id']}")
+    if group_wallets:
+        store_group_wallets(cur_mysql, conn_mysql, group_wallets)
+        print(f"Group wallets stored")
 
-        print(f"Time to process recommendations for frame ID {frame['id']}: {time.time() - recommendations_start_time:.2f} seconds")
-        print(f"Total time to process frame ID {frame['id']}: {time.time() - frame_start_time:.2f} seconds")
+    print(f"Total time to process recommendations: {time.time() - recommendation_processing_start:.2f} seconds")
 
     return products_df
