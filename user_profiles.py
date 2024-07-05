@@ -76,8 +76,8 @@ def create_user_profiles(cur_pg, attestations_csv):
 
     users = list(profiles.values())
 
-    print("User Profiles:")
-    for user in users:
-        print(user)
+    # print("User Profiles:")
+    # for user in users:
+    #     print(user)
 
     return users
