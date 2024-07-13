@@ -13,7 +13,7 @@ conn_pg, cur_pg = get_postgres_connection()
 conn_mysql, cur_mysql = get_mysql_connection()
 
 # Read the CSV data
-attestations_csv = pd.read_csv('attestations.csv')
+attestations_csv = pd.read_csv('receipts-attestations.csv')
 
 # Create user profiles
 create_user_profiles_start_time = time.time()
