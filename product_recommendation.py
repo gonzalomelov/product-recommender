@@ -6,19 +6,35 @@ from sklearn.metrics.pairwise import cosine_similarity
 from data_processing import clean_text, infer_activity_category, categorize_sessions
 import ollama
 
-SIMILARITY_THRESHOLD = 0.15 # Adjust this value as needed
+SIMILARITY_THRESHOLD = 0.03 # Adjust this value as needed
 
 def generate_catchy_message(profile_text, product_title, product_combined_text):
-    response = ollama.chat(
-        model='llama3',
-        messages=[
-            {
-                "role": "user",
-                "content": f"Create a catchy message for a user profile: '{profile_text}' recommending the product: '{product_title}' with the following details: {product_combined_text}. Should be similar to 'Hey champ! 🇺🇸🏃‍♂️💨 As a dedicated runner from the USA, our Whey Protein (Chocolate Flavour) is perfect for your muscle recovery and strength building. Grab Yours Now! 💪🍫'. Less than 350 characters. Only output your suggested message. For the user profile, do not use as is, update it reasonably."
-            }
-        ]
-    )
-    return response['message']['content'].strip('"')
+    # response = ollama.chat(
+    #     model='llama3',
+    #     messages=[
+    #         {
+    #             "role": "user",
+    #             "content": f"Create a catchy message for a user profile: '{profile_text}' recommending the product: '{product_title}' with the following details: {product_combined_text}. Should be similar to 'Hey champ! 🇺🇸🏃‍♂️💨 As a dedicated runner from the USA, our Whey Protein (Chocolate Flavour) is perfect for your muscle recovery and strength building. Grab Yours Now! 💪🍫'. Less than 350 characters. Only output your suggested message. For the user profile, do not use as is, update it reasonably."
+    #         }
+    #     ]
+    # )
+    # return response['message']['content'].strip('"')
+    return ""
+
+def generate_catchy_default_message(profile_text):
+    # response = ollama.chat(
+    #     model='llama3',
+    #     messages=[
+    #         {
+    #             "role": "user",
+    #             "content": f"Create a catchy message for a user profile: '{profile_text}' recommending our top products with the following details 'Explore our bestsellers designed just for you!'. Only output your suggested message. Do not use 'NoCoinBaseOne' or 'NoCoinbase'. If 'Coinbase' is found, say something about Coinbase."
+    #         }
+    #     ]
+    # )
+    # message = response['message']['content'].strip('"')
+    # print(message)
+    # return message
+    return ""
 
 def get_all_frames(cur_mysql):
     query = """
@@ -28,7 +44,7 @@ def get_all_frames(cur_mysql):
         AND matchingCriteria = 'ALL'
         -- AND shop = 'quickstart-62fbe4d4.myshopify.com' -- threshold 0.15
         -- AND shop = 'it-is-football-season.myshopify.com' -- threshold 0.25
-        -- AND shop = 'nouns4health.xyz' -- threshold 0.03
+        AND shop = 'nouns4health.xyz' -- threshold 0.03
         ;
     """
     cur_mysql.execute(query)
@@ -41,22 +57,27 @@ def get_all_products(cur_mysql):
     WHERE TRUE
         -- AND shop = 'quickstart-62fbe4d4.myshopify.com'
         -- AND shop = 'it-is-football-season.myshopify.com'
-        -- AND shop = 'nouns4health.xyz'
+        AND shop = 'nouns4health.xyz'
         ;
     """
     cur_mysql.execute(query)
     return cur_mysql.fetchall()
 
-def store_group_profiles(cur_mysql, conn_mysql, group_profiles):
+def store_group_profiles_with_default_messages(cur_mysql, conn_mysql, group_profiles):
     if group_profiles:
-        upsert_query = """
-        INSERT INTO GroupProfile (profileText, createdAt)
-        VALUES (%s, NOW())
-        ON DUPLICATE KEY UPDATE profileText = VALUES(profileText)
-        """
-        cur_mysql.executemany(upsert_query, [(profile,) for profile in group_profiles])
+        for profile in group_profiles:
+            default_message = generate_catchy_default_message(profile_text=profile)
+            upsert_query = """
+            INSERT INTO GroupProfile (profileText, message, createdAt)
+            VALUES (%s, %s, NOW())
+            ON DUPLICATE KEY UPDATE
+            profileText = VALUES(profileText),
+            message = VALUES(message)
+            """
+            cur_mysql.execute(upsert_query, (profile, default_message))
         conn_mysql.commit()
-        print(f"Stored {len(group_profiles)} group profiles to the database.")
+        print(f"Stored {len(group_profiles)} group profiles with default messages to the database.")
+
 
 def store_group_wallets(cur_mysql, conn_mysql, group_wallets):
     if group_wallets:
@@ -164,7 +185,9 @@ def recommend_products(cur_mysql, conn_mysql, users):
 
     # Generate hashed group IDs
     group_profiles = [profile for profile in unique_profiles]
-    store_group_profiles(cur_mysql, conn_mysql, group_profiles)
+
+    # Call the function to store group profiles with default messages
+    store_group_profiles_with_default_messages(cur_mysql, conn_mysql, group_profiles)
 
     # Fetch group profile IDs
     cur_mysql.execute("SELECT profileText FROM GroupProfile")
@@ -254,10 +277,10 @@ def recommend_products(cur_mysql, conn_mysql, users):
                     matching_texts.append(product['combined_text'])
             while len(recommendations) < 3:
                 recommendations.append(None)
+            profile_text = profile
+            for wallet in profile_groups[profile]:
+                group_wallets.append((profile_text, wallet))
             if any(recommendations):
-                profile_text = profile
-                for wallet in profile_groups[profile]:
-                    group_wallets.append((profile_text, wallet))
                 for rec_idx, product_id in enumerate(recommendations):
                     if product_id:
                         product_title = frame_products.loc[frame_products['id'] == product_id, 'title'].values[0]
@@ -270,6 +293,10 @@ def recommend_products(cur_mysql, conn_mysql, users):
                         product_title = frame_products.loc[frame_products['id'] == product_id, 'title'].values[0]
                         print(f"- Product ID: {product_id}, Product Title: {product_title}")
                         print(f"Message: {matching_texts[rec_idx]}")
+            else:
+                # Store the profile even if no products are recommended
+                for wallet in profile_groups[profile]:
+                    group_wallets.append((profile_text, wallet))
 
     if group_recommendations:
         store_group_recommendations(cur_mysql, conn_mysql, group_recommendations)
