@@ -14,22 +14,6 @@ def extract_country_from_json(decoded_data_json):
         pass
     return "", ""
 
-def clean_text(text):
-    if isinstance(text, float):
-        text = str(text)
-    text = text.replace("Coinbase One", "coinbaseone")
-    clean = re.compile('<.*?>')
-    text = re.sub(clean, '', text)
-    text = re.sub(r'[^\w\s]', '', text).lower()
-    return text
-
-def infer_activity_category(text, keywords):
-    for category, phrases in keywords.items():
-        for phrase in phrases:
-            if phrase in text.lower():
-                return category
-    return "running_0"
-
 def categorize_sessions(activity, sessions):
     if activity == "running":
         if sessions > 100:
@@ -45,3 +29,12 @@ def categorize_sessions(activity, sessions):
         elif sessions == 0:
             return "running_0"
     return activity  # Keep original activity for non-running activities
+
+def clean_text(text):
+    if isinstance(text, float):
+        text = str(text)
+    text = text.replace("Coinbase One", "coinbaseone")
+    clean = re.compile('<.*?>')
+    text = re.sub(clean, '', text)
+    text = re.sub(r'[^\w\s]', '', text).lower()
+    return text

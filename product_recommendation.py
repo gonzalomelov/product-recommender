@@ -3,7 +3,7 @@ import pandas as pd
 import numpy as np
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_similarity
-from data_processing import clean_text, infer_activity_category, categorize_sessions
+from data_processing import clean_text
 import ollama
 
 SIMILARITY_THRESHOLD = 0.03 # Adjust this value as needed
@@ -19,21 +19,6 @@ def generate_catchy_message(profile_text, product_title, product_combined_text):
     #     ]
     # )
     # return response['message']['content'].strip('"')
-    return ""
-
-def generate_catchy_default_message(profile_text):
-    # response = ollama.chat(
-    #     model='llama3',
-    #     messages=[
-    #         {
-    #             "role": "user",
-    #             "content": f"Create a catchy message for a user profile: '{profile_text}' recommending our top products with the following details 'Explore our bestsellers designed just for you!'. Only output your suggested message. Do not use 'NoCoinBaseOne' or 'NoCoinbase'. If 'Coinbase' is found, say something about Coinbase."
-    #         }
-    #     ]
-    # )
-    # message = response['message']['content'].strip('"')
-    # print(message)
-    # return message
     return ""
 
 def get_all_frames(cur_mysql):
@@ -63,34 +48,6 @@ def get_all_products(cur_mysql):
     cur_mysql.execute(query)
     return cur_mysql.fetchall()
 
-def store_group_profiles_with_default_messages(cur_mysql, conn_mysql, group_profiles):
-    if group_profiles:
-        for profile in group_profiles:
-            default_message = generate_catchy_default_message(profile_text=profile)
-            upsert_query = """
-            INSERT INTO GroupProfile (profileText, message, createdAt)
-            VALUES (%s, %s, NOW())
-            ON DUPLICATE KEY UPDATE
-            profileText = VALUES(profileText),
-            message = VALUES(message)
-            """
-            cur_mysql.execute(upsert_query, (profile, default_message))
-        conn_mysql.commit()
-        print(f"Stored {len(group_profiles)} group profiles with default messages to the database.")
-
-
-def store_group_wallets(cur_mysql, conn_mysql, group_wallets):
-    if group_wallets:
-        upsert_query = """
-        INSERT INTO GroupWallet (profileText, walletAddress, createdAt)
-        VALUES (%s, %s, NOW())
-        ON DUPLICATE KEY UPDATE
-        profileText = VALUES(profileText), walletAddress = VALUES(walletAddress)
-        """
-        cur_mysql.executemany(upsert_query, group_wallets)
-        conn_mysql.commit()
-        print(f"Stored {len(group_wallets)} group wallets to the database.")
-
 def store_group_recommendations(cur_mysql, conn_mysql, group_recommendations):
     if group_recommendations:
         upsert_query = """
@@ -104,10 +61,7 @@ def store_group_recommendations(cur_mysql, conn_mysql, group_recommendations):
         conn_mysql.commit()
         print(f"Stored {len(group_recommendations)} group recommendations to the database.")
 
-def hash_profile_text(profile_text):
-    return hashlib.sha256(profile_text.encode('utf-8')).hexdigest()[:100]
-
-def recommend_products(cur_mysql, conn_mysql, users):
+def recommend_products(cur_mysql, conn_mysql, profile_groups):
     # Fetch frames from MySQL database
     frames = get_all_frames(cur_mysql)
     if not frames:
@@ -156,43 +110,11 @@ def recommend_products(cur_mysql, conn_mysql, users):
     products_df['activity_categories'] = products_df['combined_text'].apply(lambda x: infer_activity_categories(x, activity_keywords))
     products_df['combined_text'] = products_df['combined_text'] + ' ' + products_df['activity_categories']
 
-    # Preprocess user profiles for TF-IDF vectorization (considering multiple activities)
-    def preprocess_user_profile(user):
-        profile_text = user['country_code'] + ' ' + user['country'] + ' '
-        profile_text += ' '.join([categorize_sessions(activity, sessions) for activity, sessions in user['activities'].items() if sessions > 0]) + ' '
-        profile_text += ' '.join(user['attended_events']) + ' '
-        profile_text += 'coinbaseone' if user['coinbase_one'] else 'nocoinbaseone'
-        profile_text += ' coinbase' if user['coinbase'] else ' nocoinbase'
-        return profile_text
-
-    # Process users
-    user_profiles_with_wallets = [(user['wallet'], preprocess_user_profile(user)) for user in users]
-
-    # Group user profiles by their text
-    profile_groups = {}
-    for wallet, profile in user_profiles_with_wallets:
-        if profile not in profile_groups:
-            profile_groups[profile] = []
-        profile_groups[profile].append(wallet)
-
-    print(f"Number of user profile groups: {len(profile_groups)}")
-
-    for profile, wallets in profile_groups.items():
-        print(f"Group with profile '{profile}' has {len(wallets)} wallets")
-
     # Extract only the unique profile texts for TF-IDF vectorization
     unique_profiles = list(profile_groups.keys())
 
     # Generate hashed group IDs
     group_profiles = [profile for profile in unique_profiles]
-
-    # Call the function to store group profiles with default messages
-    store_group_profiles_with_default_messages(cur_mysql, conn_mysql, group_profiles)
-
-    # Fetch group profile IDs
-    cur_mysql.execute("SELECT profileText FROM GroupProfile")
-    group_profiles_df = pd.DataFrame(cur_mysql.fetchall(), columns=['profileText'])
-    profile_to_group_id = {profile: profile for profile in group_profiles_df['profileText']}
 
     # Combine product descriptions and user profiles for TF-IDF vectorization
     combined_corpus = list(products_df['combined_text']) + unique_profiles
@@ -229,7 +151,6 @@ def recommend_products(cur_mysql, conn_mysql, users):
     similarity_threshold = SIMILARITY_THRESHOLD
 
     group_recommendations = []
-    group_wallets = []
 
     # Start timing the recommendation processing
     recommendation_processing_start = time.time()
@@ -278,8 +199,6 @@ def recommend_products(cur_mysql, conn_mysql, users):
             while len(recommendations) < 3:
                 recommendations.append(None)
             profile_text = profile
-            for wallet in profile_groups[profile]:
-                group_wallets.append((profile_text, wallet))
             if any(recommendations):
                 for rec_idx, product_id in enumerate(recommendations):
                     if product_id:
@@ -293,18 +212,10 @@ def recommend_products(cur_mysql, conn_mysql, users):
                         product_title = frame_products.loc[frame_products['id'] == product_id, 'title'].values[0]
                         print(f"- Product ID: {product_id}, Product Title: {product_title}")
                         print(f"Message: {matching_texts[rec_idx]}")
-            else:
-                # Store the profile even if no products are recommended
-                for wallet in profile_groups[profile]:
-                    group_wallets.append((profile_text, wallet))
 
     if group_recommendations:
         store_group_recommendations(cur_mysql, conn_mysql, group_recommendations)
         print(f"Group recommendations stored")
-
-    if group_wallets:
-        store_group_wallets(cur_mysql, conn_mysql, group_wallets)
-        print(f"Group wallets stored")
 
     print(f"Total time to process recommendations: {time.time() - recommendation_processing_start:.2f} seconds")
 
