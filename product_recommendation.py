@@ -4,6 +4,7 @@ import numpy as np
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_similarity
 from data_processing import clean_text
+from user_profiles import fetch_profile_groups
 import ollama
 
 SIMILARITY_THRESHOLD = 0.03 # Adjust this value as needed
@@ -61,7 +62,9 @@ def store_group_recommendations(cur_mysql, conn_mysql, group_recommendations):
         conn_mysql.commit()
         print(f"Stored {len(group_recommendations)} group recommendations to the database.")
 
-def recommend_products(cur_mysql, conn_mysql, profile_groups):
+def recommend_products(cur_mysql, conn_mysql):
+    profile_groups = fetch_profile_groups(cur_mysql)
+
     # Fetch frames from MySQL database
     frames = get_all_frames(cur_mysql)
     if not frames:

@@ -3,7 +3,6 @@ import pandas as pd
 from dotenv import load_dotenv
 from db_config import get_postgres_connection, get_mysql_connection
 from user_profiles import create_user_profiles, create_and_store_profile_groups
-from product_recommendation import recommend_products
 
 # Load environment variables from .env file
 load_dotenv()
@@ -26,12 +25,6 @@ create_and_store_profile_groups_start_time = time.time()
 profile_groups = create_and_store_profile_groups(conn_mysql, cur_mysql, users)
 create_and_store_profile_groups_end_time = time.time()
 print(f"Total time to run create_and_store_profile_groups: {create_and_store_profile_groups_end_time - create_and_store_profile_groups_start_time:.2f} seconds")
-
-# Get products and recommend
-recommend_products_start_time = time.time()
-product_data = recommend_products(cur_mysql, conn_mysql, profile_groups)
-recommend_products_end_time = time.time()
-print(f"Total time to run recommend_products: {recommend_products_end_time - recommend_products_start_time:.2f} seconds")
 
 # Clean up database connections
 cur_pg.close()

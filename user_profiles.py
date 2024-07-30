@@ -2,6 +2,16 @@ import json
 from data_processing import extract_country_from_json, categorize_sessions
 import ollama
 
+def fetch_profile_groups(cur_mysql):
+    query = """
+    SELECT profileText
+    FROM GroupProfile
+    """
+    cur_mysql.execute(query)
+    result = cur_mysql.fetchall()
+    profile_groups = {row[0]: [] for row in result}  # Assuming profileText is unique
+    return profile_groups
+
 def get_all_wallet_attestations(cur_pg, attestations_csv):
     query = """
     SELECT "recipient", "schemaId", COUNT(*) as count, MAX("decodedDataJson") as decodedDataJson
