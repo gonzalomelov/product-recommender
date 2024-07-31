@@ -1,7 +1,6 @@
 import time
 import json
 from data_processing import extract_country_from_json, categorize_sessions
-import ollama
 
 def fetch_profile_groups(cur_mysql):
     query = """
@@ -94,25 +93,9 @@ def create_user_profiles(cur_pg, attestations_csv):
 
     return users
 
-def generate_catchy_default_message(profile_text):
-    # response = ollama.chat(
-    #     model='llama3',
-    #     messages=[
-    #         {
-    #             "role": "user",
-    #             "content": f"Create a catchy message for a user profile: '{profile_text}' recommending our top products with the following details 'Explore our bestsellers designed just for you!'. Only output your suggested message. Do not use 'NoCoinBaseOne' or 'NoCoinbase'. If 'Coinbase' is found, say something about Coinbase."
-    #         }
-    #     ]
-    # )
-    # message = response['message']['content'].strip('"')
-    # print(message)
-    # return message
-    return ""
-
-def store_group_profiles_with_default_messages(cur_mysql, conn_mysql, group_profiles):
+def store_group_profiles(cur_mysql, conn_mysql, group_profiles):
     if group_profiles:
         for profile in group_profiles:
-            default_message = generate_catchy_default_message(profile_text=profile)
             upsert_query = """
             INSERT INTO GroupProfile (profileText, message, createdAt)
             VALUES (%s, %s, NOW())
@@ -120,7 +103,7 @@ def store_group_profiles_with_default_messages(cur_mysql, conn_mysql, group_prof
             profileText = VALUES(profileText),
             message = VALUES(message)
             """
-            cur_mysql.execute(upsert_query, (profile, default_message))
+            cur_mysql.execute(upsert_query, (profile, ""))  # Pass profile and empty string as a tuple
         conn_mysql.commit()
         print(f"Stored {len(group_profiles)} group profiles with default messages to the database.")
 
@@ -188,7 +171,7 @@ def create_and_store_profile_groups(conn_mysql, cur_mysql, users):
 
     # Call the function to store group profiles with default messages
     store_group_profiles_start = time.time()
-    store_group_profiles_with_default_messages(cur_mysql, conn_mysql, group_profiles)
+    store_group_profiles(cur_mysql, conn_mysql, group_profiles)
     store_group_profiles_end = time.time()
 
     print(f"Storing group profiles with default messages time: {store_group_profiles_end - store_group_profiles_start} seconds")

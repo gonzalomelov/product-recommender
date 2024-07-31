@@ -5,22 +5,8 @@ from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_similarity
 from data_processing import clean_text
 from user_profiles import fetch_profile_groups
-import ollama
 
 SIMILARITY_THRESHOLD = 0.03 # Adjust this value as needed
-
-def generate_catchy_message(profile_text, product_title, product_combined_text):
-    # response = ollama.chat(
-    #     model='llama3',
-    #     messages=[
-    #         {
-    #             "role": "user",
-    #             "content": f"Create a catchy message for a user profile: '{profile_text}' recommending the product: '{product_title}' with the following details: {product_combined_text}. Should be similar to 'Hey champ! 🇺🇸🏃‍♂️💨 As a dedicated runner from the USA, our Whey Protein (Chocolate Flavour) is perfect for your muscle recovery and strength building. Grab Yours Now! 💪🍫'. Less than 350 characters. Only output your suggested message. For the user profile, do not use as is, update it reasonably."
-    #         }
-    #     ]
-    # )
-    # return response['message']['content'].strip('"')
-    return ""
 
 def get_all_frames(cur_mysql):
     query = """
@@ -207,8 +193,7 @@ def recommend_products(cur_mysql, conn_mysql):
                     if product_id:
                         product_title = frame_products.loc[frame_products['id'] == product_id, 'title'].values[0]
                         product_combined_text = matching_texts[rec_idx]
-                        message = generate_catchy_message(profile_text, product_title, product_combined_text)
-                        group_recommendations.append((frame_id, profile_text, product_id, product_title, message))
+                        group_recommendations.append((frame_id, profile_text, product_id, product_title, ""))
                 print(f"Recommendations for Profile {profile_text} in Frame {frame_id}:")
                 for rec_idx, product_id in enumerate(recommendations):
                     if product_id:
