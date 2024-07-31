@@ -84,7 +84,7 @@ def transform_string(s):
 
 def fetch_and_update_group_recommendations(conn_mysql, cur_mysql):
     # Fetch all group recommendations
-    cur_mysql.execute("SELECT gr.frameId, gr.profileText, gr.productId, gr.productTitle, gr.message, gr.createdAt, p.description, p.alt FROM GroupRecommendation gr JOIN Product p ON gr.productId = p.id")
+    cur_mysql.execute("SELECT gr.frameId, gr.profileText, gr.productId, gr.productTitle, gr.message, gr.createdAt, p.description, p.alt FROM GroupRecommendation gr JOIN Product p ON gr.productId = p.id WHERE gr.message IS NULL OR gr.message = ''")
     group_recommendations = cur_mysql.fetchall()
 
     # Convert fetched results to list of dictionaries
